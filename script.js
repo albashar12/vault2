@@ -238,7 +238,11 @@ async function loadFromTelegram() {
         syncBadge.innerText = "AUTO SYNC ACTIVE";
 
         let messages = data.result.map(u => u.message || u.channel_post).filter(m => m);
-        let vaultMessages = messages.filter(m => (m.text && m.text.includes('[VAULT_DATA]')) || (m.caption && m.caption.includes('[VAULT_FILE]')));
+        let vaultMessages = messages.filter(m => 
+            (m.text && m.text.includes('[VAULT_DATA]')) || 
+            (m.caption && m.caption.includes('[VAULT_FILE]')) ||
+            m.photo || m.video
+        );
 
         if (vaultMessages.length === 0) {
             listDiv.innerHTML = 'No data found.';
@@ -264,23 +268,36 @@ async function loadFromTelegram() {
                 textContent = msg.caption.replace('[VAULT_FILE]', '').trim();
             }
 
-            let htmlContent = `<div class="meta">${date}</div><div>${escapeHtml(textContent)}</div>`;
+            let htmlContent = `<div class="meta">${date}</div>`;
+            if (textContent) {
+                htmlContent += `<div style="margin-bottom: 8px;">${escapeHtml(textContent)}</div>`;
+            }
 
+            // Handle Photos with click to zoom (Fullscreen modal)
             if (msg.photo && msg.photo.length > 0) {
                 let photoObj = msg.photo[msg.photo.length - 1];
-                let fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photoObj.file_id}`);
-                let fileData = await fileRes.json();
-                if (fileData.ok) {
-                    let fileUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
-                    htmlContent += `<img src="${fileUrl}" class="media-player" alt="Vault Image">`;
+                try {
+                    let fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photoObj.file_id}`);
+                    let fileData = await fileRes.json();
+                    if (fileData.ok && fileData.result.file_path) {
+                        let fileUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
+                        htmlContent += `<img src="${fileUrl}" class="media-player" alt="Vault Image" onclick="openModal('${fileUrl}')" title="Click to view full screen">`;
+                    }
+                } catch(e) {
+                    console.error("Failed to load photo", e);
                 }
             } 
+            // Handle Videos with native controls and responsive player
             else if (msg.video) {
-                let fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${msg.video.file_id}`);
-                let fileData = await fileRes.json();
-                if (fileData.ok) {
-                    let fileUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
-                    htmlContent += `<video src="${fileUrl}" controls class="media-player"></video>`;
+                try {
+                    let fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${msg.video.file_id}`);
+                    let fileData = await fileRes.json();
+                    if (fileData.ok && fileData.result.file_path) {
+                        let fileUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
+                        htmlContent += `<video src="${fileUrl}" controls controlsList="nodownload" class="media-player"></video>`;
+                    }
+                } catch(e) {
+                    console.error("Failed to load video", e);
                 }
             }
 
@@ -291,6 +308,18 @@ async function loadFromTelegram() {
     } catch (err) {
         syncBadge.innerText = "DISCONNECTED";
     }
+}
+
+// Lightbox Image Functions
+function openModal(imgSrc) {
+    const modal = document.getElementById("imageModal");
+    const modalImg = document.getElementById("modalImg");
+    modal.style.display = "block";
+    modalImg.src = imgSrc;
+}
+
+function closeModal() {
+    document.getElementById("imageModal").style.display = "none";
 }
 
 function escapeHtml(text) {
